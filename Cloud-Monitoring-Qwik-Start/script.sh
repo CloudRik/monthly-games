@@ -1,26 +1,18 @@
 #!/bin/bash
 
-# Enable immediate exit on error
-set -e
-
 # Fetch Environment Variables
 export PROJECT_ID=$(gcloud config get-value project)
 export USER_EMAIL=$(gcloud config get-value account)
 
-# Function to create instance with location constraint fallback
-create_instance() {
-    local ZONES_TO_TRY=("us-east4-a" "us-west1-b" "us-central1-a" "us-central1-c" "us-east1-b")
-    
-    DEFAULT_ZONE=$(gcloud config get-value compute/zone 2>/dev/null || true)
-    if [ -n "$DEFAULT_ZONE" ] && [ "$DEFAULT_ZONE" != "(unset)" ]; then
-        ZONES_TO_TRY=("$DEFAULT_ZONE" "${ZONES_TO_TRY[@]}")
-    fi
+# Array of zones to bypass policy restrictions
+ZONES=("us-east1-b" "us-east4-a" "us-west1-b" "us-central1-c" "us-central1-a")
 
-    for ZONE_CHOICE in "${ZONES_TO_TRY[@]}"; do
-        echo "Attempting to create VM instance in zone: $ZONE_CHOICE..."
-        
+# Task 1: Create Compute Engine Instance with zone fallback
+if ! gcloud compute instances describe lamp-1-vm &>/dev/null; then
+    for ZONE in "${ZONES[@]}"; do
+        echo "Trying zone: $ZONE..."
         if gcloud compute instances create lamp-1-vm \
-            --zone=$ZONE_CHOICE \
+            --zone=$ZONE \
             --machine-type=e2-medium \
             --tags=http-server \
             --image-family=debian-11 \
@@ -31,25 +23,14 @@ apt-get install -y apache2 php
 service apache2 restart
 curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
 bash add-google-cloud-ops-agent-repo.sh --also-install
-' \
-            --quiet 2>/dev/null; then
-            
-            export FINAL_ZONE=$ZONE_CHOICE
-            echo "Successfully created instance in zone: $FINAL_ZONE"
-            return 0
+' --quiet; then
+            echo "Instance created in $ZONE"
+            break
         fi
     done
-
-    echo "Failed to create VM instance across allowed zones."
-    exit 1
-}
-
-# Task 1: Create Compute Engine Instance with Fallback (Skip if already created)
-if ! gcloud compute instances describe lamp-1-vm &>/dev/null; then
-    create_instance
 fi
 
-# Task 3 & 4: Create Uptime Check and Alert Policy via Monitoring API
+# Task 3 & 4: Create Uptime Check and Alert Policy
 cat << EOF > notification-channel.json
 {
   "type": "email",
@@ -89,7 +70,7 @@ EOF
 
 gcloud alpha monitoring policies create --policy-from-file="alert-policy.json" --quiet || true
 
-# Cleanup temporary JSON files
+# Cleanup
 rm -f notification-channel.json alert-policy.json
 
 # Completion Banner
