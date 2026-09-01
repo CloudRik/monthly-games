@@ -10,7 +10,7 @@ Google Cloud Shell mein ye command paste karo:
 
 ```bash
 
-curl -fsSL https://raw.githubusercontent.com/CloudRik/monthly-games/main/PubSub-Qwik-Start-Command-Line/script.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/CloudRik/monthly-games/main/Pub/Sub-Qwik-Start-Command%20Line/script.sh" | bash
 
 ```
 
