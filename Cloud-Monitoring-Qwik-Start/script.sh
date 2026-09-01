@@ -11,7 +11,6 @@ export USER_EMAIL=$(gcloud config get-value account)
 create_instance() {
     local ZONES_TO_TRY=("us-east4-a" "us-west1-b" "us-central1-a" "us-central1-c" "us-east1-b")
     
-    # Try fetching default zone first
     DEFAULT_ZONE=$(gcloud config get-value compute/zone 2>/dev/null || true)
     if [ -n "$DEFAULT_ZONE" ] && [ "$DEFAULT_ZONE" != "(unset)" ]; then
         ZONES_TO_TRY=("$DEFAULT_ZONE" "${ZONES_TO_TRY[@]}")
@@ -45,8 +44,10 @@ bash add-google-cloud-ops-agent-repo.sh --also-install
     exit 1
 }
 
-# Task 1: Create Compute Engine Instance with Fallback
-create_instance
+# Task 1: Create Compute Engine Instance with Fallback (Skip if already created)
+if ! gcloud compute instances describe lamp-1-vm &>/dev/null; then
+    create_instance
+fi
 
 # Task 3 & 4: Create Uptime Check and Alert Policy via Monitoring API
 cat << EOF > notification-channel.json
@@ -59,7 +60,7 @@ cat << EOF > notification-channel.json
 }
 EOF
 
-gcloud alpha monitoring channels create --channel-content-file="notification-channel.json" --quiet || true
+gcloud alpha monitoring channels create --channel-content-from-file="notification-channel.json" --quiet || true
 
 cat << EOF > alert-policy.json
 {
