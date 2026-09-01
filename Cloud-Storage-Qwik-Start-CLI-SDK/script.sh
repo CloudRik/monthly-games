@@ -10,8 +10,10 @@ export BUCKET_NAME=$PROJECT_ID
 # Set Region
 gcloud config set compute/region us-central1
 
-# Task 1: Create a Cloud Storage Bucket
-gcloud storage buckets create gs://$BUCKET_NAME --location=us-central1
+# Task 1: Create bucket ONLY if it doesn't exist
+if ! gcloud storage buckets describe gs://$BUCKET_NAME &>/dev/null; then
+    gcloud storage buckets create gs://$BUCKET_NAME --location=us-central1
+fi
 
 # Task 2: Download image and upload to bucket root
 curl -s -o ada.jpg https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Ada_Lovelace_portrait.jpg/800px-Ada_Lovelace_portrait.jpg
