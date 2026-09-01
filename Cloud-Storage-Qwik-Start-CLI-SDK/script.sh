@@ -7,12 +7,20 @@ set -e
 export PROJECT_ID=$(gcloud config get-value project)
 export BUCKET_NAME=$PROJECT_ID
 
-# Set Region
-gcloud config set compute/region us-central1
+# Get region dynamically from gcloud config or fallback to us-east4 / us-central1 safely
+export LOCATION=$(gcloud config get-value compute/region)
 
-# Task 1: Create bucket ONLY if it doesn't exist
+if [ -z "$LOCATION" ] || [ "$LOCATION" == "(unset)" ]; then
+    export LOCATION=$(gcloud config get-value run/region)
+fi
+
+if [ -z "$LOCATION" ] || [ "$LOCATION" == "(unset)" ]; then
+    export LOCATION="us-east4"
+fi
+
+# Task 1: Create bucket dynamically using allowed LOCATION
 if ! gcloud storage buckets describe gs://$BUCKET_NAME &>/dev/null; then
-    gcloud storage buckets create gs://$BUCKET_NAME --location=us-central1
+    gcloud storage buckets create gs://$BUCKET_NAME --location=$LOCATION
 fi
 
 # Task 2: Download image and upload to bucket root
