@@ -5,27 +5,22 @@ set -e
 
 # Fetch Environment Variables Automatically
 export PROJECT_ID=$(gcloud config get-value project)
-export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 export LOCATION=$(gcloud config get-value run/region)
 
-# Fallback if region is not set in config
-if [ -z "$LOCATION" ]; then
+# If region is not set, set default to us-east4
+if [ -z "$LOCATION" ] || [ "$LOCATION" == "(unset)" ]; then
     export LOCATION="us-east4"
     gcloud config set run/region $LOCATION
 fi
 
-# Step 1: Create directory & setup index.js and package.json
+# Step 1: Create directory & write code files
 mkdir -p gcf_hello_world && cd gcf_hello_world
 
 cat << 'EOF' > index.js
 const functions = require('@google-cloud/functions-framework');
 
-// Register a CloudEvent callback with the Functions Framework that will
-// be executed when the Pub/Sub trigger topic receives a message.
 functions.cloudEvent('helloPubSub', cloudEvent => {
-  // The Pub/Sub message is passed as the CloudEvent's data payload.
   const base64name = cloudEvent.data.message.data;
-
   const name = base64name
     ? Buffer.from(base64name, 'base64').toString()
     : 'World';
@@ -49,7 +44,7 @@ cat << 'EOF' > package.json
 }
 EOF
 
-# Step 2: Deploy Cloud Run Function directly
+# Step 2: Deploy Cloud Run Function
 gcloud functions deploy nodejs-pubsub-function \
   --gen2 \
   --runtime=nodejs22 \
@@ -61,3 +56,10 @@ gcloud functions deploy nodejs-pubsub-function \
   --service-account=cloudfunctionsa@$PROJECT_ID.iam.gserviceaccount.com \
   --allow-unauthenticated \
   --quiet
+
+# Completion Banner
+echo ""
+echo -e "\033[1;32m============================================\033[0m"
+echo -e "\033[1;32m      LAB COMPLETED SUCCESSFULLY! 🎉       \033[0m"
+echo -e "\033[1;32m============================================\033[0m"
+echo ""
