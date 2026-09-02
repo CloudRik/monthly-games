@@ -1,25 +1,78 @@
-# 🎮 Pub/Sub: Qwik Start - Command Line
+#!/bin/bash
 
-<h2 align="center">🔥 SOLUTION BY imasis 🔥</h2>
+# Enable immediate exit on error
+set -e
 
-<br>
+# Colored Prompt for Region Input
+echo -e "\033[1;33m--------------------------------------------------\033[0m"
+echo -e "\033[1;33m[?] ENTER YOUR LAB REGION (e.g. europe-west3): \033[0m"
+read -r REGION < /dev/tty
+echo -e "\033[1;33m--------------------------------------------------\033[0m"
 
-### ⚡ One-Command Automation
+# Fetch Project ID
+export PROJECT_ID=$(gcloud config get-value project)
 
-Google Cloud Shell mein ye command paste karo:
+# Enable required APIs
+gcloud services enable run.googleapis.com cloudfunctions.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --quiet
 
-```bash
+# Prepare Source Files
+mkdir -p gcf_hello_world && cd gcf_hello_world
 
-curl -fsSL "https://raw.githubusercontent.com/CloudRik/monthly-games/main/Pub/Sub-Qwik-Start-Command%20Line/script.sh" | bash
+cat << 'EOF' > index.js
+const functions = require('@google-cloud/functions-framework');
 
-```
+functions.http('helloHttp', (req, res) => {
+  res.send(`Hello ${req.query.name || req.body.name || 'World'}!`);
+});
+EOF
 
-<br>
+cat << 'EOF' > package.json
+{
+  "name": "sample-http",
+  "version": "0.0.1",
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.0.0"
+  }
+}
+EOF
 
-> ⚠️ **WARNING:** This script is for **educational purposes only**.
-> First understand the lab and complete the tasks manually, then use this automation script.
-> Use it only in authorized lab environments.
+# Task 1 & 2: Deploy Cloud Run Function (2nd Gen)
+echo "Deploying function in region: $REGION..."
+gcloud functions deploy gcfunction \
+    --gen2 \
+    --runtime=nodejs20 \
+    --region=$REGION \
+    --source=. \
+    --entry-point=helloHttp \
+    --trigger-http \
+    --allow-unauthenticated \
+    --max-instances=5 \
+    --quiet
 
-<br>
+# Task 3: Wait for URL & Test Function
+echo "Fetching function URL for testing..."
+FUNCTION_URL=""
 
-### 🤖 Automate • Deploy • Complete 🚀
+for i in {1..10}; do
+    FUNCTION_URL=$(gcloud run services describe gcfunction --region=$REGION --format='value(status.url)' 2>/dev/null || true)
+    if [ -n "$FUNCTION_URL" ]; then
+        break
+    fi
+    echo "Waiting for function URL to become available ($i/10)..."
+    sleep 3
+done
+
+echo "Testing function at URL: $FUNCTION_URL"
+curl -X POST "$FUNCTION_URL" \
+    -H "Content-Type: application/json" \
+    -d '{"message":"Hello World!"}'
+
+# Cleanup
+cd .. && rm -rf gcf_hello_world
+
+# Completion Banner
+echo ""
+echo -e "\033[1;32m============================================\033[0m"
+echo -e "\033[1;32m      LAB COMPLETED SUCCESSFULLY! 🎉       \033[0m"
+echo -e "\033[1;32m============================================\033[0m"
+echo ""
