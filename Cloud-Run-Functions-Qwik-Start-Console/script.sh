@@ -3,19 +3,19 @@
 # Enable immediate exit on error
 set -e
 
-# Fetch Environment Variables
-export PROJECT_ID=$(gcloud config get-value project)
-export REGION=$(gcloud config get-value compute/region 2>/dev/null || true)
+# Colored Prompt for Region Input
+echo -e "\033[1;33m--------------------------------------------------\033[0m"
+echo -e "\033[1;33m[?] ENTER YOUR LAB REGION (e.g. us-central1, us-east4): \033[0m"
+read -r REGION < /dev/tty
+echo -e "\033[1;33m--------------------------------------------------\033[0m"
 
-# Auto-detect region or fallback safely
-if [ -z "$REGION" ] || [ "$REGION" == "(unset)" ]; then
-    export REGION="us-central1"
-fi
+# Fetch Project ID
+export PROJECT_ID=$(gcloud config get-value project)
 
 # Enable required APIs
-gcloud services enable run.googleapis.com cloudfunctions.googleapis.com cloudbuild.googleapis.com --quiet
+gcloud services enable run.googleapis.com cloudfunctions.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --quiet
 
-# Task 1 & 2: Deploy Cloud Run Function (2nd Gen)
+# Prepare Source Files
 mkdir -p gcf_hello_world && cd gcf_hello_world
 
 cat << 'EOF' > index.js
@@ -36,10 +36,11 @@ cat << 'EOF' > package.json
 }
 EOF
 
-# Deploying 2nd gen function with max-instances=5 and public access
+# Deploying Function in User-Specified Region
+echo "Deploying function in region: $REGION..."
 gcloud functions deploy gcfunction \
     --gen2 \
-    --runtime=nodejs20 \
+    --runtime=nodejs22 \
     --region=$REGION \
     --source=. \
     --entry-point=helloHttp \
