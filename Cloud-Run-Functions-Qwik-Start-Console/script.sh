@@ -5,11 +5,11 @@ set -e
 
 # Colored Prompt for Region Input
 echo -e "\033[1;33m--------------------------------------------------\033[0m"
-echo -e "\033[1;33m[?] ENTER YOUR LAB REGION (e.g. us-central1, us-east4): \033[0m"
+echo -e "\033[1;33m[?] ENTER YOUR LAB REGION (e.g. asia-east1): \033[0m"
 read -r REGION < /dev/tty
 echo -e "\033[1;33m--------------------------------------------------\033[0m"
 
-# Fetch Project ID
+# Fetch Environment Variables
 export PROJECT_ID=$(gcloud config get-value project)
 
 # Enable required APIs
@@ -36,11 +36,10 @@ cat << 'EOF' > package.json
 }
 EOF
 
-# Deploying Function in User-Specified Region
+# Task 1 & 2: Deploy Cloud Function (v1 format required by Qwiklabs backend)
 echo "Deploying function in region: $REGION..."
 gcloud functions deploy gcfunction \
-    --gen2 \
-    --runtime=nodejs22 \
+    --runtime=nodejs20 \
     --region=$REGION \
     --source=. \
     --entry-point=helloHttp \
@@ -48,6 +47,14 @@ gcloud functions deploy gcfunction \
     --allow-unauthenticated \
     --max-instances=5 \
     --quiet
+
+# Task 3: Test Function to satisfy 2nd checkpoint (50 pts)
+FUNCTION_URL=$(gcloud functions describe gcfunction --region=$REGION --format='value(httpsTrigger.url)' 2>/dev/null || gcloud functions describe gcfunction --region=$REGION --format='value(url)')
+
+echo "Testing function at URL: $FUNCTION_URL"
+curl -X POST "$FUNCTION_URL" \
+    -H "Content-Type: application/json" \
+    -d '{"message":"Hello World!"}' || true
 
 # Cleanup
 cd .. && rm -rf gcf_hello_world
