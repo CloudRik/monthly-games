@@ -17,16 +17,30 @@ gcloud services enable run.googleapis.com \
                        cloudbuild.googleapis.com \
                        artifactregistry.googleapis.com \
                        eventarc.googleapis.com \
-                       storage.googleapis.com --quiet
+                       storage.googleapis.com \
+                       pubsub.googleapis.com --quiet
 
-# Ensure Pub/Sub Service Account Has Roles for Storage Triggers
+# Extract Project Number
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
-gcloud beta pubsub identity create --project=$PROJECT_ID || true
 
+# Initialize Pub/Sub and GCS Service Accounts
+gcloud beta pubsub identity create --project=$PROJECT_ID || true
+GCS_SERVICE_ACCOUNT=$(gcloud storage service-agent --project=$PROJECT_ID 2>/dev/null || echo "service-${PROJECT_NUMBER}@gs-project-accounts.iam.gserviceaccount.com")
+PUB_SUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+# Grant Pub/Sub Publisher Permissions to both GCS and Pub/Sub Service Accounts
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+    --member="serviceAccount:$GCS_SERVICE_ACCOUNT" \
     --role="roles/pubsub.publisher" \
     --quiet || true
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$PUB_SUB_SA" \
+    --role="roles/pubsub.publisher" \
+    --quiet || true
+
+# Wait for IAM policy propagation
+sleep 15
 
 # Task 1: Create Cloud Storage Bucket
 echo "Task 1: Creating Cloud Storage bucket..."
