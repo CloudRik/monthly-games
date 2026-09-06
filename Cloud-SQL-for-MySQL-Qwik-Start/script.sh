@@ -25,14 +25,14 @@ echo -e "${GREEN}Project ID:${NC} $PROJECT_ID"
 echo -e "${GREEN}Region:${NC} $REGION"
 echo -e "${GREEN}Zone:${NC} $ZONE\n"
 
-# Task 1: Create Cloud SQL Instance (Enterprise Edition / MySQL 8.0 / Development Preset)
+# Task 1: Create Cloud SQL Instance
 echo -e "${CYAN}Task 1: Creating Cloud SQL instance (myinstance)...${NC}"
 
 gcloud sql instances create myinstance \
     --database-version=MYSQL_8_0 \
-    --tier=db-custom-4-16384 \
+    --cpu=4 \
+    --memory=16GB \
     --edition=ENTERPRISE \
-    --region=$REGION \
     --zone=$ZONE \
     --root-password="Password123!"
 
@@ -41,11 +41,23 @@ echo -e "${GREEN}Instance 'myinstance' created successfully!${NC}\n"
 # Task 2 & Task 3: Create Database & Insert Sample Data
 echo -e "${CYAN}Task 2 & 3: Creating database 'guestbook' and inserting tables...${NC}"
 
-# Create 'guestbook' database using gcloud
+# Create 'guestbook' database
 gcloud sql databases create guestbook --instance=myinstance
 
-# Execute SQL commands directly into the database
-gcloud sql execute myinstance --database=guestbook --charset=utf8mb4 --command="
+# Install mysql client if not present and execute queries directly
+sudo apt-get update -y && sudo apt-get install mysql-client -y
+
+# Fetch Public IP of Instance
+INSTANCE_IP=$(gcloud sql instances describe myinstance --format='value(ipAddresses[0].ipAddress)')
+
+# Authorize current Cloud Shell IP to access Cloud SQL
+MY_IP=$(curl -s https://api.ipify.org)
+gcloud sql instances patch myinstance --authorized-networks=$MY_IP --quiet
+
+# Execute MySQL Commands
+mysql -h $INSTANCE_IP -u root -p'Password123!' -e "
+CREATE DATABASE IF NOT EXISTS guestbook;
+USE guestbook;
 CREATE TABLE IF NOT EXISTS entries (
     guestName VARCHAR(255), 
     content VARCHAR(255), 
