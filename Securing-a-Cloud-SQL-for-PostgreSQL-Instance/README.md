@@ -4,6 +4,7 @@
 
 <br>
 
+
 ## 📚 Task 1. Create a Cloud SQL for PostgreSQL instance with CMEK enabled
 
 ```bash
@@ -14,7 +15,7 @@ curl -sL https://raw.githubusercontent.com/CloudRik/monthly-games/main/Securing-
 ```
 
 <br>
-
+<br>
 
 
 
@@ -65,11 +66,20 @@ GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 500;
 
 > - Then Just Enter: `\q`
 
+<br>
+
+
+<br>
 
 ## 📚 Task 3. Configure Cloud SQL IAM database authentication
 
 
 ### STEP-1
+
+
+#### ADD IAM USER
+
+### STEP-2
 
 ```
 gcloud sql instances patch postgres-orders \
@@ -77,15 +87,13 @@ gcloud sql instances patch postgres-orders \
   --quiet
 ```
 
-### STEP-2
-
-
-#### Follow Video Step-By-Step
-
 ### STEP-3
 
 
-#### ADD IAM User
+Cloud SQL → postgres-orders → Restart
+
+
+#### Follow Video Step-By-Step
 
 
 ### STEP-4
@@ -93,25 +101,19 @@ gcloud sql instances patch postgres-orders \
 export PGPASSWORD=supersecret!
 CLOUDSQL_IP=$(gcloud sql instances describe postgres-orders --format="value(ipAddresses[0].ipAddress)")
 USERNAME=$(gcloud config list --format="value(core.account)")
-```
-```
-psql "sslmode=disable user=postgres hostaddr=$CLOUDSQL_IP dbname=orders"
-```
-> - Password dobara: `supersecret!`
 
-```
+psql "sslmode=disable user=postgres hostaddr=$CLOUDSQL_IP dbname=orders" << EOF
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ALTER DATABASE orders SET pgaudit.log = 'read,write';
-GRANT ALL PRIVILEGES ON TABLE order_items TO "student-04-5b00de08c36b0@qwiklabs.net";
-GRANT USAGE ON SCHEMA public TO "student-04-5b00de08c36b0@qwiklabs.net";
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO "student-04-5b00de08c36b0@qwiklabs.net";
-```
+GRANT ALL PRIVILEGES ON TABLE order_items TO "$USERNAME";
+GRANT USAGE ON SCHEMA public TO "$USERNAME";
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "$USERNAME";
+EOF
 
-> - Then Just Enter: `\q`
+```
+### STEP-5
 ```
 export PGPASSWORD=$(gcloud auth print-access-token)
-USERNAME=$(gcloud config list --format="value(core.account)")
-CLOUDSQL_IP=$(gcloud sql instances describe postgres-orders --format="value(ipAddresses[0].ipAddress)")
 
 psql "sslmode=require user=$USERNAME hostaddr=$CLOUDSQL_IP dbname=orders" \
   -c "SELECT COUNT(*) FROM order_items;"
