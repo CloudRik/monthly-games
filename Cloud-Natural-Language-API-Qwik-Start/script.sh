@@ -1,23 +1,32 @@
 #!/bin/bash
 # ============================================================
-# Cloud Natural Language API: Qwik Start - Automated Script
+# Cloud Natural Language API: Qwik Start - FULL Automated Script
 # ============================================================
-# Har user ke liye portable - inputs leta hai
+# Task 1 + Task 2 - Dono Cloud Shell se chal jayenge
+# SSH manually karne ki zaroorat nahi
 # ============================================================
 
-set -e  # koi bhi command fail = script ruk jaye
+set -e
 
 # ---------- STEP 0: USER INPUTS ----------
 echo "=============================================="
-echo "  Cloud NLP API Lab - Setup"
+echo "  Cloud NLP API Lab - Full Automation"
 echo "=============================================="
 echo ""
 
-# Project ID auto-detect (usually sahi hota hai, but allow override)
+# Project ID auto-detect
 DETECTED_PROJECT=$(gcloud config get-value project 2>/dev/null)
 read -p "Enter Project ID [${DETECTED_PROJECT}]: " PROJECT_ID
 PROJECT_ID=${PROJECT_ID:-$DETECTED_PROJECT}
 
+# VM details - user input (har lab mein alag ho sakta hai)
+read -p "Enter VM Instance Name [linux-instance]: " VM_NAME
+VM_NAME=${VM_NAME:-linux-instance}
+
+read -p "Enter Zone [us-central1-a]: " ZONE
+ZONE=${ZONE:-us-central1-a}
+
+# Service Account details
 read -p "Enter Service Account Name [my-natlang-sa]: " SA_NAME
 SA_NAME=${SA_NAME:-my-natlang-sa}
 
@@ -31,6 +40,8 @@ echo ""
 echo "=============================================="
 echo "📋 Summary:"
 echo "Project ID   : $PROJECT_ID"
+echo "VM Name      : $VM_NAME"
+echo "Zone         : $ZONE"
 echo "SA Name      : $SA_NAME"
 echo "SA Display   : $SA_DISPLAY"
 echo "Key File     : $KEY_FILE"
@@ -38,56 +49,83 @@ echo "=============================================="
 read -p "Proceed? (y/n): " CONFIRM
 [[ "$CONFIRM" != "y" ]] && echo "❌ Cancelled" && exit 1
 
-# ---------- STEP 1: SET ENV VARIABLE ----------
+# ============================================================
+# TASK 1: API Key / Service Account Setup (Cloud Shell mein)
+# ============================================================
 echo ""
-echo "🔧 Setting GOOGLE_CLOUD_PROJECT env variable..."
+echo "========== TASK 1: Setup =========="
+
+# Step 1: Env Variable
+echo ""
+echo "🔧 Setting GOOGLE_CLOUD_PROJECT..."
 export GOOGLE_CLOUD_PROJECT=$PROJECT_ID
 echo "✅ GOOGLE_CLOUD_PROJECT = $GOOGLE_CLOUD_PROJECT"
 
-# ---------- STEP 2: CREATE SERVICE ACCOUNT ----------
+# Step 2: Service Account
 echo ""
-echo "👤 Creating service account: $SA_NAME ..."
+echo "👤 Creating service account..."
 gcloud iam service-accounts create $SA_NAME \
   --display-name "$SA_DISPLAY" \
-  --project=$PROJECT_ID 2>/dev/null || echo "ℹ️  Service account already exists, continuing..."
+  --project=$PROJECT_ID 2>/dev/null || echo "ℹ️  SA exists, continuing..."
 echo "✅ Service account ready"
 
-# ---------- STEP 3: CREATE JSON KEY ----------
+# Step 3: JSON Key
 echo ""
-echo "🔑 Creating JSON key at $KEY_FILE ..."
+echo "🔑 Creating JSON key..."
 gcloud iam service-accounts keys create $KEY_FILE \
   --iam-account=${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com \
   --project=$PROJECT_ID
 echo "✅ JSON key created: $KEY_FILE"
 
-# ---------- STEP 4: SET APPLICATION CREDENTIALS ----------
+# Step 4: Set credentials env
 echo ""
-echo "🔐 Setting GOOGLE_APPLICATION_CREDENTIALS ..."
+echo "🔐 Setting GOOGLE_APPLICATION_CREDENTIALS..."
 export GOOGLE_APPLICATION_CREDENTIALS="$KEY_FILE"
 echo "✅ GOOGLE_APPLICATION_CREDENTIALS = $GOOGLE_APPLICATION_CREDENTIALS"
 
-# ---------- STEP 5: ENABLE NLP API (safety) ----------
+# Step 5: Enable NLP API
 echo ""
-echo "🌐 Enabling Natural Language API (just in case)..."
+echo "🌐 Enabling Natural Language API..."
 gcloud services enable language.googleapis.com --project=$PROJECT_ID 2>/dev/null || true
-echo "✅ API enabled"
+echo "✅ NLP API enabled"
 
-# ---------- STEP 6: ENTITY ANALYSIS (Task 2) ----------
 echo ""
-echo "🔍 Running entity analysis..."
-gcloud ml language analyze-entities \
-  --content="Michelangelo Caravaggio, Italian painter, is known for 'The Calling of Saint Matthew'." \
-  > result.json 2>/dev/null
-echo "✅ Analysis complete - saved to result.json"
+echo "✅ TASK 1 COMPLETE - Ab lab panel mein Task 1 'Check my progress' click karo"
 
-# ---------- STEP 7: DISPLAY RESULT ----------
+# ============================================================
+# TASK 2: Entity Analysis - VM ke andar via SSH (Cloud Shell se)
+# ============================================================
+echo ""
+echo "========== TASK 2: Entity Analysis (via SSH) =========="
+echo ""
+echo "🖥️  Connecting to VM: $VM_NAME (zone: $ZONE) ..."
+
+# VM ka SSH key auto-generate (pehli baar prompt aa sakta hai)
+gcloud compute config-ssh --project=$PROJECT_ID 2>/dev/null || true
+
+# VM ke andar command bhejna - entity analysis
+echo ""
+echo "🔍 Running entity analysis inside VM..."
+
+gcloud compute ssh $VM_NAME \
+  --zone=$ZONE \
+  --project=$PROJECT_ID \
+  --quiet \
+  --command="
+    echo '--- Inside VM: ' \$(hostname) ---
+    gcloud ml language analyze-entities \
+      --content=\"Michelangelo Caravaggio, Italian painter, is known for 'The Calling of Saint Matthew'.\" \
+      > ~/result.json 2>/dev/null
+    echo '✅ Entity analysis complete'
+    echo ''
+    echo '--- Result Preview ---'
+    cat ~/result.json
+  "
+
 echo ""
 echo "=============================================="
-echo "📄 Result Preview:"
+echo "✅ ALL TASKS COMPLETE!"
 echo "=============================================="
-cat result.json
-echo ""
-echo "=============================================="
-echo "✅ All Tasks Complete!"
-echo "Ab lab panel mein 'Check my progress' click karo."
+echo "1. Lab panel mein Task 1 'Check my progress' click karo"
+echo "2. Lab panel mein Task 2 'Check my progress' click karo"
 echo "=============================================="
