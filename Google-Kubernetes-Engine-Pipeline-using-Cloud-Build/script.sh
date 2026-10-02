@@ -2,6 +2,7 @@
 # ============================================================
 # Google Kubernetes Engine Pipeline using Cloud Build
 # Automated Script - Multi-User Portable
+# FIXED VERSION - Region handling fixed
 # ============================================================
 
 # ======================
@@ -9,17 +10,11 @@
 # ======================
 BOLD=$(tput bold)
 RESET=$(tput sgr0)
-
 RED=$(tput setaf 1)
 GREEN=$(tput setaf 2)
 YELLOW=$(tput setaf 3)
-BLUE=$(tput setaf 4)
-MAGENTA=$(tput setaf 5)
-CYAN=$(tput setaf 6)
 WHITE=$(tput setaf 7)
-
 ORANGE="\033[38;5;208m"
-
 BG_CYAN=$(tput setab 6)
 BG_MAGENTA=$(tput setab 5)
 
@@ -30,8 +25,6 @@ clear
 echo "${BG_CYAN}${BOLD}${WHITE}==================================================${RESET}"
 echo "${BG_CYAN}${BOLD}${WHITE}   >>  GKE PIPELINE USING CLOUD BUILD  <<          ${RESET}"
 echo "${BG_CYAN}${BOLD}${WHITE}==================================================${RESET}"
-echo ""
-echo "${ORANGE}${BOLD}*** Multi-User Portable Automation Script${RESET}"
 echo ""
 
 # ======================
@@ -45,90 +38,88 @@ DETECTED_PROJECT=$(gcloud config get-value project 2>/dev/null)
 read -p "Enter Your Project ID [${DETECTED_PROJECT}]: " INPUT_PROJECT
 PROJECT_ID=${INPUT_PROJECT:-$DETECTED_PROJECT}
 
-read -p "Enter Your Region [us-central1]: " INPUT_REGION
-REGION=${INPUT_REGION:-us-central1}
+read -p "Enter Your Region [us-east1]: " INPUT_REGION
+REGION=${INPUT_REGION:-us-east1}
+
+# Zone - try to auto-detect, else input
+DETECTED_ZONE=$(gcloud compute project-info describe \
+    --format="value(commonInstanceMetadata.items[google-compute-default-zone])" 2>/dev/null)
+read -p "Enter Your Zone [${DETECTED_ZONE}]: " INPUT_ZONE
+ZONE=${INPUT_ZONE:-$DETECTED_ZONE}
+
+# Git Server IP auto-detect
+GIT_SERVER_IP=$(gcloud compute instances describe git-server \
+    --zone=$ZONE \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null)
+if [ -z "$GIT_SERVER_IP" ]; then
+    read -p "Enter Git Server IP: " GIT_SERVER_IP
+fi
 
 echo ""
-echo "${YELLOW}Project ID : ${WHITE}$PROJECT_ID${RESET}"
-echo "${YELLOW}Region     : ${WHITE}$REGION${RESET}"
+echo "${YELLOW}Project ID   : ${WHITE}$PROJECT_ID${RESET}"
+echo "${YELLOW}Region       : ${WHITE}$REGION${RESET}"
+echo "${YELLOW}Zone         : ${WHITE}$ZONE${RESET}"
+echo "${YELLOW}Git Server IP: ${WHITE}$GIT_SERVER_IP${RESET}"
 echo ""
 read -p "Proceed? (y/n): " CONFIRM
 if [ "$CONFIRM" != "y" ]; then
-  echo "${RED}Cancelled${RESET}"
-  exit 1
+    echo "Cancelled"
+    exit 1
 fi
 
 # ======================
 # TASK 1: INITIALIZE LAB
 # ======================
 echo ""
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 echo "${ORANGE}${BOLD}  [1] Initializing Lab Environment${RESET}"
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 
 export PROJECT_ID=$PROJECT_ID
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 export REGION=$REGION
+export ZONE=$ZONE
+export GIT_SERVER_IP=$GIT_SERVER_IP
 gcloud config set compute/region $REGION
 
-# Detect GIT_SERVER_IP
-export GIT_SERVER_IP=$(gcloud compute instances describe git-server \
-    --zone=$REGION-a \
-    --format='get(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || \
-    gcloud compute instances describe git-server \
-    --zone=us-central1-a \
-    --format='get(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null)
-
-if [ -z "$GIT_SERVER_IP" ]; then
-    echo "${YELLOW}Could not auto-detect git-server. Please enter manually:${RESET}"
-    read -p "Enter Git Server IP: " GIT_SERVER_IP
-fi
-
-echo "${GREEN}[OK] Project ID: $PROJECT_ID${RESET}"
-echo "${GREEN}[OK] Project Number: $PROJECT_NUMBER${RESET}"
-echo "${GREEN}[OK] Region: $REGION${RESET}"
-echo "${GREEN}[OK] Git Server IP: $GIT_SERVER_IP${RESET}"
-echo ""
+echo "${GREEN}[OK] Variables set${RESET}"
+echo "  PROJECT_ID=$PROJECT_ID"
+echo "  PROJECT_NUMBER=$PROJECT_NUMBER"
+echo "  REGION=$REGION"
+echo "  ZONE=$ZONE"
+echo "  GIT_SERVER_IP=$GIT_SERVER_IP"
 
 # Enable APIs
-echo "${CYAN}Enabling required APIs...${RESET}"
+echo "Enabling APIs..."
 gcloud services enable container.googleapis.com \
     cloudbuild.googleapis.com \
     secretmanager.googleapis.com \
     containeranalysis.googleapis.com
 echo "${GREEN}[OK] APIs enabled${RESET}"
-echo ""
 
 # Create Artifact Registry
-echo "${CYAN}Creating Artifact Registry repository...${RESET}"
+echo "Creating Artifact Registry..."
 gcloud artifacts repositories create my-repository \
     --repository-format=docker \
-    --location=$REGION 2>/dev/null || echo "${YELLOW}[!] Repo may already exist${RESET}"
+    --location=$REGION 2>/dev/null || echo "[!] Repo exists"
 echo "${GREEN}[OK] Artifact Registry ready${RESET}"
-echo ""
 
 # Create GKE Cluster
-echo "${CYAN}Creating GKE cluster (this takes 3-5 minutes)...${RESET}"
+echo "Creating GKE cluster (3-5 min)..."
 gcloud container clusters create hello-cloudbuild \
     --num-nodes 1 \
     --region $REGION
 echo "${GREEN}[OK] GKE cluster created${RESET}"
-echo ""
 
-# Configure Git
+# Git config
 git config --global user.name "giteaadmin"
 git config --global user.email "student@qwiklabs.net"
 echo "${GREEN}[OK] Git configured${RESET}"
-
-echo "${ORANGE}${BOLD}>>> TASK 1 COMPLETE - Check my progress click karo${RESET}"
+echo "${ORANGE}>>> TASK 1 COMPLETE${RESET}"
 
 # ======================
 # TASK 2: CONNECT TO GIT REPOS
 # ======================
 echo ""
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 echo "${ORANGE}${BOLD}  [2] Connect to Git Repositories${RESET}"
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 
 cd ~
 rm -rf hello-cloudbuild-app 2>/dev/null
@@ -137,61 +128,52 @@ gcloud storage cp -r gs://spls/gsp1077/gke-gitops-tutorial-cloudbuild/* hello-cl
 echo "${GREEN}[OK] Sample code downloaded${RESET}"
 
 cd ~/hello-cloudbuild-app
-export REGION=$REGION
 
+# IMPORTANT: Replace us-central1 with actual REGION everywhere
 sed -i "s/us-central1/$REGION/g" cloudbuild.yaml
 sed -i "s/us-central1/$REGION/g" cloudbuild-delivery.yaml
 sed -i "s/us-central1/$REGION/g" cloudbuild-trigger-cd.yaml
 sed -i "s/us-central1/$REGION/g" kubernetes.yaml.tpl
-echo "${GREEN}[OK] Region substituted in files${RESET}"
+echo "${GREEN}[OK] Region substituted${RESET}"
 
 git init -q
 git remote add origin http://${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-app.git
 git branch -m main
 git add . && git commit -m "initial commit" -q
 git push -u http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-app.git main
-echo "${GREEN}[OK] Pushed to Git server${RESET}"
-
-echo "${ORANGE}${BOLD}>>> TASK 2 COMPLETE - Check my progress click karo${RESET}"
+echo "${GREEN}[OK] Pushed to Git${RESET}"
+echo "${ORANGE}>>> TASK 2 COMPLETE${RESET}"
 
 # ======================
-# TASK 3: CREATE CONTAINER IMAGE
+# TASK 3: CONTAINER IMAGE
 # ======================
 echo ""
-echo "${ORANGE}${BOLD}====================================================${RESET}"
-echo "${ORANGE}${BOLD}  [3] Create Container Image with Cloud Build${RESET}"
-echo "${ORANGE}${BOLD}====================================================${RESET}"
+echo "${ORANGE}${BOLD}  [3] Create Container Image${RESET}"
 
 cd ~/hello-cloudbuild-app
 COMMIT_ID="$(git rev-parse --short=7 HEAD)"
 gcloud builds submit --tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/my-repository/hello-cloudbuild:${COMMIT_ID}" .
-echo "${GREEN}[OK] Container image built and pushed${RESET}"
-
-echo "${ORANGE}${BOLD}>>> TASK 3 COMPLETE - Check my progress click karo${RESET}"
+echo "${GREEN}[OK] Container image built${RESET}"
+echo "${ORANGE}>>> TASK 3 COMPLETE${RESET}"
 
 # ======================
-# TASK 4: CREATE CI PIPELINE
+# TASK 4: CI PIPELINE
 # ======================
 echo ""
-echo "${ORANGE}${BOLD}====================================================${RESET}"
-echo "${ORANGE}${BOLD}  [4] Create and Run CI Pipeline${RESET}"
-echo "${ORANGE}${BOLD}====================================================${RESET}"
+echo "${ORANGE}${BOLD}  [4] Create CI Pipeline${RESET}"
 
 cd ~/hello-cloudbuild-app
 git add .
 git commit -m "Trigger CI pipeline" -q
 git push http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-app.git main
-echo "${GREEN}[OK] Pushed to Git${RESET}"
-
-echo "${ORANGE}${BOLD}>>> TASK 4 COMPLETE - Check my progress click karo${RESET}"
+echo "${GREEN}[OK] CI pipeline triggered${RESET}"
+echo "${ORANGE}>>> TASK 4 COMPLETE${RESET}"
 
 # ======================
 # TASK 5: SECRET MANAGER
 # ======================
 echo ""
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 echo "${ORANGE}${BOLD}  [5] Store SSH Key in Secret Manager${RESET}"
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 
 mkdir -p ~/workingdir && cd ~/workingdir
 ssh-keygen -t rsa -b 4096 -N '' -f id_rsa -C "student@qwiklabs.net" -q
@@ -205,17 +187,14 @@ PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectN
 gcloud projects add-iam-policy-binding ${PROJECT_NUMBER} \
     --member=serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
     --role=roles/secretmanager.secretAccessor --condition=None >/dev/null 2>&1
-echo "${GREEN}[OK] Secret Manager access granted${RESET}"
-
-echo "${ORANGE}${BOLD}>>> TASK 5 COMPLETE - Check my progress click karo${RESET}"
+echo "${GREEN}[OK] Secret access granted${RESET}"
+echo "${ORANGE}>>> TASK 5 COMPLETE${RESET}"
 
 # ======================
 # TASK 6: CD PIPELINE
 # ======================
 echo ""
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 echo "${ORANGE}${BOLD}  [6] Create Test Environment & CD Pipeline${RESET}"
-echo "${ORANGE}${BOLD}====================================================${RESET}"
 
 PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='get(projectNumber)')
 gcloud projects add-iam-policy-binding ${PROJECT_NUMBER} \
@@ -230,7 +209,6 @@ mkdir ~/hello-cloudbuild-env
 gcloud storage cp -r gs://spls/gsp1077/gke-gitops-tutorial-cloudbuild/* ~/hello-cloudbuild-env
 cd ~/hello-cloudbuild-env
 
-export REGION=$REGION
 sed -i "s/us-central1/$REGION/g" cloudbuild.yaml
 sed -i "s/us-central1/$REGION/g" cloudbuild-delivery.yaml
 sed -i "s/us-central1/$REGION/g" cloudbuild-trigger-cd.yaml
@@ -245,16 +223,18 @@ git add . && git commit -m "initial commit" -q
 git push -u http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git main
 echo "${GREEN}[OK] Pushed env repo${RESET}"
 
-# Create production and candidate branches
+# Create branches
 git checkout -b production -q
 git checkout -b candidate -q
 git push http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git production
 git push http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git candidate
 echo "${GREEN}[OK] Branches created${RESET}"
 
-# Create cloudbuild.yaml for env repo
+# ============================================
+# CRITICAL FIX: Create env cloudbuild.yaml properly
+# ============================================
 cd ~/hello-cloudbuild-env
-cat <<'EOF' > cloudbuild.yaml
+cat > cloudbuild.yaml <<CLOUDBUILD_EOF
 # Copyright 2018 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -280,7 +260,7 @@ steps:
   - '-f'
   - 'kubernetes.yaml'
   env:
-  - 'CLOUDSDK_COMPUTE_REGION=REGION_HERE'
+  - 'CLOUDSDK_COMPUTE_REGION=${REGION}'
   - 'CLOUDSDK_CONTAINER_CLUSTER=hello-cloudbuild'
 
 - name: 'gcr.io/cloud-builders/gcloud'
@@ -289,25 +269,26 @@ steps:
   args:
   - '-c'
   - |
-    set -x && \
-    git clone -b production http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git prod_repo && \
-    cd prod_repo && \
-    git config user.email "student@qwiklabs.net" && \
-    git config user.name "Cloud Build" && \
-    cp ../kubernetes.yaml kubernetes.yaml && \
-    git add kubernetes.yaml && \
-    git commit -m "Deployed manifest from commit $_COMMIT_SHA" && \
+    set -x && \\
+    git clone -b production http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git prod_repo && \\
+    cd prod_repo && \\
+    git config user.email "student@qwiklabs.net" && \\
+    git config user.name "Cloud Build" && \\
+    cp ../kubernetes.yaml kubernetes.yaml && \\
+    git add kubernetes.yaml && \\
+    git commit -m "Deployed manifest from commit \$_COMMIT_SHA" && \\
     git push origin production
 
 options:
   logging: CLOUD_LOGGING_ONLY
-EOF
+CLOUDBUILD_EOF
+echo "${GREEN}[OK] Env cloudbuild.yaml created with region=$REGION${RESET}"
 
-sed -i "s/REGION_HERE/$REGION/g" cloudbuild.yaml
-sed -i "s/\${GIT_SERVER_IP}/$GIT_SERVER_IP/g" cloudbuild.yaml
-echo "${GREEN}[OK] Env cloudbuild.yaml created${RESET}"
+# Verify
+echo "--- Verifying CLOUDSDK_COMPUTE_REGION ---"
+grep "CLOUDSDK_COMPUTE_REGION" cloudbuild.yaml
 
-# Commit and push env
+# Commit and push
 cd ~/hello-cloudbuild-env
 git checkout candidate -q
 git add cloudbuild.yaml
@@ -315,9 +296,11 @@ git commit -m "Create cloudbuild.yaml for deployment" -q
 git push http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git candidate
 echo "${GREEN}[OK] Env cloudbuild pushed${RESET}"
 
-# Modify CI pipeline in app repo
+# ============================================
+# Update app cloudbuild.yaml
+# ============================================
 cd ~/hello-cloudbuild-app
-cat <<'EOF' > cloudbuild.yaml
+cat > cloudbuild.yaml <<CLOUDBUILD_APP_EOF
 # Copyright 2018 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -349,14 +332,14 @@ steps:
   args:
   - 'build'
   - '-t'
-  - 'REGION_HERE-docker.pkg.dev/$PROJECT_ID/my-repository/hello-cloudbuild:$_SHORT_SHA'
+  - '${REGION}-docker.pkg.dev/\$PROJECT_ID/my-repository/hello-cloudbuild:\$_SHORT_SHA'
   - '.'
 
 - name: 'gcr.io/cloud-builders/docker'
   id: Push
   args:
   - 'push'
-  - 'REGION_HERE-docker.pkg.dev/$PROJECT_ID/my-repository/hello-cloudbuild:$_SHORT_SHA'
+  - '${REGION}-docker.pkg.dev/\$PROJECT_ID/my-repository/hello-cloudbuild:\$_SHORT_SHA'
 
 - name: 'gcr.io/cloud-builders/gcloud'
   id: Clone env repo
@@ -364,10 +347,10 @@ steps:
   args:
   - '-c'
   - |
-    git clone http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git && \
-    cd hello-cloudbuild-env && \
-    git checkout candidate && \
-    git config user.email "student@qwiklabs.net" && \
+    git clone http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git && \\
+    cd hello-cloudbuild-env && \\
+    git checkout candidate && \\
+    git config user.email "student@qwiklabs.net" && \\
     git config user.name "Cloud Build"
 
 - name: 'gcr.io/cloud-builders/gcloud'
@@ -376,8 +359,8 @@ steps:
   args:
   - '-c'
   - |
-     sed "s/GOOGLE_CLOUD_PROJECT/${PROJECT_ID}/g" kubernetes.yaml.tpl | \
-     sed "s/COMMIT_SHA/${_SHORT_SHA}/g" > hello-cloudbuild-env/kubernetes.yaml
+     sed "s/GOOGLE_CLOUD_PROJECT/\${PROJECT_ID}/g" kubernetes.yaml.tpl | \\
+     sed "s/COMMIT_SHA/\${_SHORT_SHA}/g" > hello-cloudbuild-env/kubernetes.yaml
 
 - name: 'gcr.io/cloud-builders/gcloud'
   id: Push manifest
@@ -385,45 +368,46 @@ steps:
   args:
   - '-c'
   - |
-    set -x && \
-    cd hello-cloudbuild-env && \
-    git add kubernetes.yaml && \
-    git commit -m "Deploying image REGION_HERE-docker.pkg.dev/$PROJECT_ID/my-repository/hello-cloudbuild:${_SHORT_SHA}
-    Built from commit ${_COMMIT_SHA} of repository hello-cloudbuild-app
-    Author: $(git log --format='%an <%ae>' -n 1 HEAD)" && \
+    set -x && \\
+    cd hello-cloudbuild-env && \\
+    git add kubernetes.yaml && \\
+    git commit -m "Deploying image ${REGION}-docker.pkg.dev/\$PROJECT_ID/my-repository/hello-cloudbuild:\${_SHORT_SHA}
+    Built from commit \${_COMMIT_SHA} of repository hello-cloudbuild-app
+    Author: \$(git log --format='%an <%ae>' -n 1 HEAD)" && \\
     git push origin candidate
 
 options:
   logging: CLOUD_LOGGING_ONLY
-EOF
+CLOUDBUILD_APP_EOF
 
-sed -i "s/REGION_HERE/$REGION/g" cloudbuild.yaml
-sed -i "s/\${GIT_SERVER_IP}/$GIT_SERVER_IP/g" cloudbuild.yaml
 echo "${GREEN}[OK] App cloudbuild.yaml updated${RESET}"
+echo "--- Verifying app cloudbuild region ---"
+grep "docker.pkg.dev" cloudbuild.yaml | head -2
 
-# Commit and trigger CI
+# Commit and push
 cd ~/hello-cloudbuild-app
 git add cloudbuild.yaml
 git commit -m "Trigger CD pipeline" -q
 git push http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-app.git main
-echo "${GREEN}[OK] CI pipeline triggered${RESET}"
+echo "${GREEN}[OK] Pushed to app repo${RESET}"
 
-# Pull manifest and trigger CD
+# Wait for CI to build
+echo "Waiting 60 seconds for CI build to complete..."
+sleep 60
+
+# Pull and trigger CD
 cd ~/hello-cloudbuild-env
 git pull http://giteaadmin:GiteaPassword123@${GIT_SERVER_IP}:3000/giteaadmin/hello-cloudbuild-env.git candidate
 gcloud builds submit --config=cloudbuild.yaml --substitutions=_COMMIT_SHA=$(git rev-parse HEAD) .
 echo "${GREEN}[OK] CD pipeline triggered${RESET}"
-
-echo "${ORANGE}${BOLD}>>> TASK 6 COMPLETE - Check my progress click karo${RESET}"
+echo "${ORANGE}>>> TASK 6 COMPLETE${RESET}"
 
 # ======================
 # COMPLETION
 # ======================
 echo ""
 echo "${BG_MAGENTA}${BOLD}${WHITE}====================================================${RESET}"
-echo "${BG_MAGENTA}${BOLD}${WHITE}                                                    ${RESET}"
-echo "${BG_MAGENTA}${BOLD}${WHITE}         ***  LAB SUCCESSFULLY COMPLETED!  ***       ${RESET}"
-echo "${BG_MAGENTA}${BOLD}${WHITE}                                                    ${RESET}"
+echo "${BG_MAGENTA}${BOLD}${WHITE}     ***  LAB SUCCESSFULLY COMPLETED!  ***          ${RESET}"
 echo "${BG_MAGENTA}${BOLD}${WHITE}====================================================${RESET}"
 echo ""
 echo "${WHITE}${BOLD}[>] Access your resources:${RESET}"
