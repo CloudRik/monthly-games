@@ -160,6 +160,6 @@ echo
 
 echo "${CYAN}${BOLD}=================================================${RESET}"
 echo "${CYAN}${BOLD}   AUTOMATED SETUP COMPLETED${RESET}"
-echo "${CYAN}${BOLD}   Now complete Grafana UI tasks manually${RESET}"
+echo "${CYAN}${BOLD}   THANK YOU FOR WATCHING${RESET}"
 echo "${CYAN}${BOLD}=================================================${RESET}"
 echo
