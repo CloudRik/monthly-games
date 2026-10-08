@@ -31,11 +31,10 @@ echo "${BLUE}Bucket Name:   ${WHITE}$BUCKET_NAME${RESET}"
 echo
 
 # ===============================
-# FIND USERNAME 2
+# FIND USERNAME 2 (Robust)
 # ===============================
 echo "${YELLOW}${BOLD}Detecting Username 2...${RESET}"
 
-# Get all IAM members except current user and service accounts
 USER2=$(gcloud projects get-iam-policy $PROJECT_ID \
   --flatten="bindings[].members" \
   --format="value(bindings.members)" 2>/dev/null | \
@@ -58,6 +57,7 @@ echo "${GREEN}${BOLD}Task 2: Creating Cloud Storage bucket${RESET}"
 if gcloud storage buckets describe gs://$BUCKET_NAME &>/dev/null; then
   echo "${YELLOW}Bucket already exists, skipping creation...${RESET}"
 else
+  # Try with uniform access first, fallback to basic
   gcloud storage buckets create gs://$BUCKET_NAME \
     --location=us-central1 \
     --uniform-bucket-level-access 2>/dev/null || \
@@ -69,7 +69,8 @@ echo
 
 echo "${GREEN}${BOLD}Task 2: Uploading sample file${RESET}"
 echo "Sample content for IAM testing" > sample.txt
-gcloud storage cp sample.txt gs://$BUCKET_NAME/sample.txt
+gcloud storage cp sample.txt gs://$BUCKET_NAME/sample.txt 2>/dev/null || \
+  gsutil cp sample.txt gs://$BUCKET_NAME/sample.txt
 rm -f sample.txt
 echo "${GREEN}File uploaded: sample.txt${RESET}"
 echo
@@ -79,10 +80,17 @@ echo
 # ===============================
 echo "${MAGENTA}${BOLD}Task 3: Removing Project Viewer role from Username 2${RESET}"
 
+# Try with --condition=None first (needed if policy has conditions)
 gcloud projects remove-iam-policy-binding $PROJECT_ID \
   --member="$USER2" \
   --role="roles/viewer" \
-  --quiet 2>/dev/null || echo "${YELLOW}Viewer role already removed or not present${RESET}"
+  --condition=None \
+  --quiet 2>/dev/null || \
+gcloud projects remove-iam-policy-binding $PROJECT_ID \
+  --member="$USER2" \
+  --role="roles/viewer" \
+  --quiet 2>/dev/null || \
+echo "${YELLOW}Viewer role already removed or not present${RESET}"
 
 echo "${GREEN}Viewer role removed${RESET}"
 echo
@@ -92,6 +100,12 @@ echo
 # ===============================
 echo "${BLUE}${BOLD}Task 4: Granting Storage Object Viewer role to Username 2${RESET}"
 
+# Try with --condition=None first, fallback without
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="$USER2" \
+  --role="roles/storage.objectViewer" \
+  --condition=None \
+  --quiet 2>/dev/null || \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="$USER2" \
   --role="roles/storage.objectViewer" \
