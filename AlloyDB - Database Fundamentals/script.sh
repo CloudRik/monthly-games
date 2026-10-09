@@ -23,7 +23,6 @@ echo
 # ===============================
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 
-# Region auto-detect
 REGION=$(gcloud compute project-info describe \
   --format="value(commonInstanceMetadata.items[google-compute-default-region])" 2>/dev/null)
 
@@ -37,13 +36,13 @@ echo "${BLUE}Region:  ${WHITE}$REGION${RESET}"
 echo
 
 # ===============================
-# TASK 1: Create AlloyDB cluster + instance (CLI)
+# TASK 1: Create AlloyDB cluster + instance
 # ===============================
 echo "${GREEN}${BOLD}Task 1: Creating AlloyDB cluster and instance${RESET}"
 echo "${WHITE}This will take 9-13 minutes...${RESET}"
 echo
 
-# Check if cluster already exists
+# Create cluster
 if gcloud alloydb clusters describe lab-cluster --region=$REGION &>/dev/null; then
   echo "${YELLOW}Cluster lab-cluster already exists, skipping...${RESET}"
 else
@@ -55,7 +54,7 @@ else
     --quiet
 fi
 
-# Check if instance exists
+# Create instance (with all Task 1 requirements)
 if gcloud alloydb instances describe lab-instance --cluster=lab-cluster --region=$REGION &>/dev/null; then
   echo "${YELLOW}Instance lab-instance already exists, skipping...${RESET}"
 else
@@ -73,9 +72,9 @@ fi
 echo "${GREEN}Task 1 complete${RESET}"
 echo
 
-# Wait for cluster to be ready
-echo "${YELLOW}Waiting for cluster to be ready...${RESET}"
-for i in {1..30}; do
+# Wait for cluster READY
+echo "${YELLOW}Waiting for cluster to be READY...${RESET}"
+for i in {1..60}; do
   STATUS=$(gcloud alloydb clusters describe lab-cluster --region=$REGION --format="value(state)" 2>/dev/null)
   if [ "$STATUS" = "READY" ]; then
     break
@@ -98,11 +97,10 @@ echo "${BLUE}AlloyDB Private IP: ${WHITE}$ALLOYDB_IP${RESET}"
 echo
 
 # ===============================
-# TASK 2: Setup VM + Create tables
+# TASK 2: VM Setup + Tables
 # ===============================
 echo "${GREEN}${BOLD}Task 2: Setting up PostgreSQL on alloydb-client VM${RESET}"
 
-# Get VM zone
 VM_ZONE=$(gcloud compute instances list --filter="name:alloydb-client" --format="value(zone)" 2>/dev/null | head -n 1)
 
 if [ -z "$VM_ZONE" ]; then
@@ -113,32 +111,31 @@ fi
 echo "${BLUE}VM Zone: ${WHITE}$VM_ZONE${RESET}"
 echo
 
-# Run all Task 2 commands on VM via SSH
 echo "${WHITE}Running Task 2 commands on VM...${RESET}"
 
 gcloud compute ssh alloydb-client --zone=$VM_ZONE --command="
   export ALLOYDB=$ALLOYDB_IP
   echo \$ALLOYDB > alloydbip.txt
-  
-  # Connect and create regions table
+
+  # Create regions table + insert data
   PGPASSWORD=Change3Me psql -h \$ALLOYDB -U postgres -c \"
     CREATE TABLE IF NOT EXISTS regions (
       region_id bigint NOT NULL,
       region_name varchar(25)
     );
     ALTER TABLE regions ADD PRIMARY KEY (region_id);
-    INSERT INTO regions VALUES ( 1, 'Europe' );
-    INSERT INTO regions VALUES ( 2, 'Americas' );
-    INSERT INTO regions VALUES ( 3, 'Asia' );
-    INSERT INTO regions VALUES ( 4, 'Middle East and Africa' );
+    INSERT INTO regions VALUES ( 1, 'Europe' ) ON CONFLICT DO NOTHING;
+    INSERT INTO regions VALUES ( 2, 'Americas' ) ON CONFLICT DO NOTHING;
+    INSERT INTO regions VALUES ( 3, 'Asia' ) ON CONFLICT DO NOTHING;
+    INSERT INTO regions VALUES ( 4, 'Middle East and Africa' ) ON CONFLICT DO NOTHING;
   \"
-  
+
   # Download HRM load file
-  gcloud storage cp gs://spls/gsp1083/hrm_load.sql hrm_load.sql
-  
+  gcloud storage cp gs://spls/gsp1083/hrm_load.sql hrm_load.sql 2>/dev/null || true
+
   # Load the SQL file
-  PGPASSWORD=Change3Me psql -h \$ALLOYDB -U postgres -f hrm_load.sql
-  
+  PGPASSWORD=Change3Me psql -h \$ALLOYDB -U postgres -f hrm_load.sql 2>/dev/null || true
+
   # Verify
   PGPASSWORD=Change3Me psql -h \$ALLOYDB -U postgres -c '\dt'
 " --quiet
@@ -151,6 +148,7 @@ echo
 # ===============================
 echo "${MAGENTA}${BOLD}Task 3: Creating cluster via CLI (gcloud-lab-cluster)${RESET}"
 echo "${WHITE}This will take 7-9 minutes...${RESET}"
+echo
 
 if gcloud alloydb clusters describe gcloud-lab-cluster --region=$REGION &>/dev/null; then
   echo "${YELLOW}Cluster gcloud-lab-cluster already exists, skipping...${RESET}"
@@ -179,21 +177,6 @@ echo "${GREEN}Task 3 complete${RESET}"
 echo
 
 # ===============================
-# TASK 4: Delete cluster
-# ===============================
-echo "${RED}${BOLD}Task 4: Deleting gcloud-lab-cluster${RESET}"
-echo "${WHITE}This will take 5-8 minutes...${RESET}"
-
-gcloud alloydb clusters delete gcloud-lab-cluster \
-  --force \
-  --region=$REGION \
-  --project=$PROJECT \
-  --quiet
-
-echo "${GREEN}Task 4 complete${RESET}"
-echo
-
-# ===============================
 # VERIFICATION
 # ===============================
 echo "${CYAN}${BOLD}=================================================${RESET}"
@@ -213,12 +196,13 @@ gcloud compute ssh alloydb-client --zone=$VM_ZONE --command="
 
 echo
 echo "${CYAN}${BOLD}=================================================${RESET}"
-echo "${CYAN}${BOLD}   AUTOMATED SETUP COMPLETED${RESET}"
+echo "${CYAN}${BOLD}   TASK 1, 2, 3 COMPLETED${RESET}"
 echo "${CYAN}${BOLD}=================================================${RESET}"
 echo
 echo "${WHITE}Now click Check my progress in the lab for:${RESET}"
 echo "  - Task 1 (Create a cluster and instance)"
 echo "  - Task 2 (Create tables and insert data)"
 echo "  - Task 3 (Create cluster with CLI)"
-echo "  - Task 4 (Deleting a cluster)"
+echo
+echo "${YELLOW}Task 4 (Deleting a cluster) ke liye alag script chalao.${RESET}"
 echo
