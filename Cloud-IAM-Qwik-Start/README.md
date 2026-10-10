@@ -1,4 +1,4 @@
-# 🎮 It Speaks! Create Synthetic Speech Using Text-to-Speech
+# 🎮 Cloud IAM: Qwik Start
 
 <h2 align="center">🔥 SOLUTION BY imasis 🔥</h2>
 
@@ -10,7 +10,8 @@ Google Cloud Shell mein ye command paste karo:
 
 ```bash
 
-curl -sL -o tts.sh "https://raw.githubusercontent.com/CloudRik/monthly-games/main/It%20Speaks%21%20Create%20Synthetic%20Speech%20Using%20Text-to-Speech/script.sh" && chmod +x tts.sh && ./tts.sh
+curl -fsSL https://raw.githubusercontent.com/CloudRik/monthly-games/main/Cloud-IAM-Qwik-Start/script.sh | bash
+
 ```
 
 <br>
