@@ -1,0 +1,25 @@
+# 🎮 Managed Service for Apache Spark: Qwik Start - Command Line
+
+<h2 align="center">🔥 SOLUTION BY imasis 🔥</h2>
+
+<br>
+
+### ⚡ One-Command Automation
+
+Google Cloud Shell mein ye command paste karo:
+
+```bash
+
+curl -sL -o spark.sh "https://raw.githubusercontent.com/CloudRik/monthly-games/main/Managed%20Service%20for%20Apache%20Spark%3A%20Qwik%20Start%20-%20Command%20Line/script.sh" && chmod +x spark.sh && ./spark.sh
+
+```
+
+<br>
+
+> ⚠️ **WARNING:** This script is for **educational purposes only**.
+> First understand the lab and complete the tasks manually, then use this automation script.
+> Use it only in authorized lab environments.
+
+<br>
+
+### 🤖 Automate • Deploy • Complete 🚀
